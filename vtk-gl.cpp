@@ -24,6 +24,9 @@ vtkNew<vtkRenderer> ren;
 vtkNew<vtkRenderWindow> renWin;
 vtkNew<vtkActor> coneActor;
 
+vtkNew<vtkTransform> transform;
+//transform->Identity();
+
 int press_x, press_y;
 int release_x, release_y;
 float x_angle = 0.0;
@@ -77,21 +80,12 @@ void Draw()
     // vtk camera -> set opengl modelview matrix
     // problem: rotation
     vtkCamera *camera = ren->GetActiveCamera();
-
-    vtkNew<vtkTransform> transform;
-    transform->Identity();
-    transform->RotateX(-y_angle);
-    transform->RotateY(x_angle);
-    transform->Scale(scale_size, scale_size, scale_size);
-
     double eyein[3] = {0,0,5};
+    double upin[3] = {0, 1, 0};
+    //double focal[3] = {0,0,0};
 #if 1 // light follow camera
-    double eyeout[3];
-    vtkNew<vtkMatrix4x4> mt;
-    transform->GetTranspose(mt.GetPointer());
-    mt->MultiplyPoint(eyein, eyeout);
-    camera->SetPosition(eyeout);
-
+    camera->SetPosition(transform->TransformVector(eyein));
+    camera->SetViewUp(transform->TransformVector(upin));
 #else // static light
     camera->SetModelTransformMatrix(transform->GetMatrix());
     camera->SetPosition(eyein);
@@ -105,21 +99,21 @@ void Draw()
         l->SetPosition(1, 0,0);
         //l->SetTransformMatrix(m.GetPointer());
     }
+    camera->SetViewUp(0,1,0);
 #endif
     camera->SetFocalPoint(0,0,0);
-    camera->SetViewUp(0,1,0);
 
     // get modelview matrix
     vtkMatrix4x4 *m = camera->GetModelViewTransformMatrix();
     double *f = &m->Element[0][0];
 
+
     // opengl
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     glMultTransposeMatrixd(f);
-
     // draw
-    opengl_disply();
+    opengl_draw();
 
 #elif 0
     // opengl modelview -> vtk camera
@@ -206,6 +200,8 @@ void Draw()
     renWin->Render();
 
 
+
+
     glutSwapBuffers();
 }
 
@@ -228,18 +224,27 @@ void MouseButton(int button, int state, int x, int y)
 void MouseMotion(int x, int y)
 {
     if (xform_mode==XFORM_ROTATE) {
-      x_angle += (x - press_x)/2;
+      x_angle = (x - press_x)/2;
       //if (x_angle > 180) x_angle -= 360;
       //else if (x_angle <-180) x_angle += 360;
 
-      y_angle -= (y - press_y)/2;
-      if (y_angle > 90) y_angle = 90;
-      else if (y_angle <-90) y_angle = -90;
+      y_angle = (y - press_y)/2;
+      //if (y_angle > 90) y_angle = 90;
+      //else if (y_angle <-90) y_angle = -90;
+
+      double axis[3];
+      axis[0] = -y_angle;
+      axis[1] = -x_angle;
+      axis[2] = 0;
+      double mag = (y_angle*y_angle+x_angle*x_angle);
+      transform->RotateWXYZ(mag, axis);
     }
     else if (xform_mode == XFORM_SCALE){
       float old_size = scale_size;
-      scale_size /= (1+ (y - press_y)/120.0);
+      scale_size = (1 - (y - press_y)/120.0);
       if (scale_size <0) scale_size = old_size;
+
+      transform->Scale(scale_size, scale_size, scale_size);
     }
     press_x = x;
     press_y = y;
